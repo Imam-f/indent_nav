@@ -1,5 +1,4 @@
 " --- Helper Functions (Script-Local) ---
-
 " Get the effective indent, handling empty lines by looking forward
 " for the next non-empty line.
 function! s:GetEffectiveIndent(lnum) abort
@@ -22,7 +21,6 @@ function! s:GetEffectiveIndent(lnum) abort
                 " Found a non-empty line, use its indent
                 return indent(next_lnum)
             endif
-            " Next line is also empty, continue searching downwards
             let next_lnum += 1
         endwhile
         " Reached EOF without finding a non-empty line below the empty one
@@ -30,36 +28,42 @@ function! s:GetEffectiveIndent(lnum) abort
     endif
 endfunction
 
-" Find the start line of the block containing start_lnum with target_indent
+" Find the start line of the block containing start_lnum.
+" A block includes lines with effective indent >= target_indent.
+" Searches upwards.
 function! s:FindBlockStartLine(start_lnum, target_indent) abort
     let block_start_lnum = a:start_lnum
     let search_lnum = a:start_lnum
     while search_lnum >= 1
-        " Use the (now fixed) helper to get effective indent
         let effective_indent_check = s:GetEffectiveIndent(search_lnum)
-        if effective_indent_check == a:target_indent
+        " MODIFIED: Check if indent is GREATER THAN OR EQUAL TO target
+        if effective_indent_check >= a:target_indent && effective_indent_check >= 0 " Ensure valid indent
             let block_start_lnum = search_lnum
             let search_lnum -= 1
         else
-            break " Found line before the block (different effective indent)
+            " Found line before the block (indent < target_indent or invalid line)
+            break
         endif
     endwhile
     return block_start_lnum
 endfunction
 
-" Find the end line of the block containing start_lnum with target_indent
+" Find the end line of the block containing start_lnum.
+" A block includes lines with effective indent >= target_indent.
+" Searches downwards.
 function! s:FindBlockEndLine(start_lnum, target_indent) abort
     let max_lines = line('$')
     let block_end_lnum = a:start_lnum
     let search_lnum = a:start_lnum
     while search_lnum <= max_lines
-        " Use the (now fixed) helper to get effective indent
         let effective_indent_check = s:GetEffectiveIndent(search_lnum)
-        if effective_indent_check == a:target_indent
+         " MODIFIED: Check if indent is GREATER THAN OR EQUAL TO target
+        if effective_indent_check >= a:target_indent && effective_indent_check >= 0 " Ensure valid indent
             let block_end_lnum = search_lnum
             let search_lnum += 1
         else
-            break " Found line after the block (different effective indent)
+            " Found line after the block (indent < target_indent or invalid line)
+            break
         endif
     endwhile
     return block_end_lnum
@@ -89,14 +93,14 @@ endfunction
 
 function! indent_nav#MoveToBlockStart() abort
     let current_lnum = line('.')
-    let target_indent = s:GetEffectiveIndent(current_lnum) " Uses fixed helper
+    let target_indent = s:GetEffectiveIndent(current_lnum)
 
-    " Do nothing if not in an indented block
+    " Do nothing if not in an indented block (target indent must be > 0)
     if target_indent <= 0
         return
     endif
 
-    " Find the actual start line of the block
+    " Find the actual start line of the block (using modified helper)
     let block_start_lnum = s:FindBlockStartLine(current_lnum, target_indent)
 
     " Calculate the target line (line before the block start)
@@ -113,9 +117,9 @@ endfunction
 
 function! indent_nav#MoveToBlockEnd() abort
     let current_lnum = line('.')
-    let target_indent = s:GetEffectiveIndent(current_lnum) " Uses fixed helper
+    let target_indent = s:GetEffectiveIndent(current_lnum)
 
-    " Do nothing if not in an indented block
+    " Do nothing if not in an indented block (target indent must be > 0)
     if target_indent <= 0
         return
     endif
@@ -123,7 +127,7 @@ function! indent_nav#MoveToBlockEnd() abort
     " Set the jump mark before moving
     normal! m'
 
-    " Find the full boundaries of the block the cursor is in
+    " Find the full boundaries of the block the cursor is in (using modified helpers)
     let block_start_lnum = s:FindBlockStartLine(current_lnum, target_indent)
     let block_end_lnum = s:FindBlockEndLine(current_lnum, target_indent)
 
@@ -146,12 +150,14 @@ endfunction
 
 function! indent_nav#IndentBlockTextObject(type) abort
     let current_lnum = line('.')
-    let target_indent = s:GetEffectiveIndent(current_lnum) " Uses fixed helper
+    let target_indent = s:GetEffectiveIndent(current_lnum)
 
+    " Do nothing if not in an indented block (target indent must be > 0)
     if target_indent <= 0
         return
     endif
 
+    " Find block boundaries (using modified helpers)
     let block_start_lnum = s:FindBlockStartLine(current_lnum, target_indent)
     let block_end_lnum = s:FindBlockEndLine(current_lnum, target_indent)
 
