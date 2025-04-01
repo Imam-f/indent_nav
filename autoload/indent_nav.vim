@@ -1,23 +1,32 @@
-" --- Helper Functions ---
+" --- Helper Functions (Script-Local) ---
 
-" Get the effective indent, handling empty lines by looking at the next line
+" Get the effective indent, handling empty lines by looking forward
+" for the next non-empty line.
 function! s:GetEffectiveIndent(lnum) abort
     let max_lines = line('$')
     if a:lnum < 1 || a:lnum > max_lines
         return -1 " Invalid line number
     endif
 
-    let line_content = getline(a:lnum)
-    if line_content =~ '^\s*$'
-        " Empty line: check indent of the line below it
-        if a:lnum < max_lines
-            return indent(a:lnum + 1)
-        else
-            return 0 " Empty line at EOF
-        endif
-    else
-        " Non-empty line: use its own indent
+    let current_line_content = getline(a:lnum)
+
+    if current_line_content !~ '^\s*$'
+        " Current line is not empty, use its indent directly
         return indent(a:lnum)
+    else
+        " Current line IS empty. Find the next non-empty line's indent.
+        let next_lnum = a:lnum + 1
+        while next_lnum <= max_lines
+            let next_line_content = getline(next_lnum)
+            if next_line_content !~ '^\s*$'
+                " Found a non-empty line, use its indent
+                return indent(next_lnum)
+            endif
+            " Next line is also empty, continue searching downwards
+            let next_lnum += 1
+        endwhile
+        " Reached EOF without finding a non-empty line below the empty one
+        return 0
     endif
 endfunction
 
@@ -26,12 +35,13 @@ function! s:FindBlockStartLine(start_lnum, target_indent) abort
     let block_start_lnum = a:start_lnum
     let search_lnum = a:start_lnum
     while search_lnum >= 1
+        " Use the (now fixed) helper to get effective indent
         let effective_indent_check = s:GetEffectiveIndent(search_lnum)
         if effective_indent_check == a:target_indent
             let block_start_lnum = search_lnum
             let search_lnum -= 1
         else
-            break " Found line before the block
+            break " Found line before the block (different effective indent)
         endif
     endwhile
     return block_start_lnum
@@ -43,18 +53,29 @@ function! s:FindBlockEndLine(start_lnum, target_indent) abort
     let block_end_lnum = a:start_lnum
     let search_lnum = a:start_lnum
     while search_lnum <= max_lines
+        " Use the (now fixed) helper to get effective indent
         let effective_indent_check = s:GetEffectiveIndent(search_lnum)
         if effective_indent_check == a:target_indent
             let block_end_lnum = search_lnum
             let search_lnum += 1
         else
-            break " Found line after the block
+            break " Found line after the block (different effective indent)
         endif
     endwhile
     return block_end_lnum
 endfunction
 
-" Find the last non-empty line within a given range (inclusive)
+" Find the first non-empty line in a range
+function! s:FindFirstNonEmpty(start_lnum, end_lnum) abort
+    for lnum in range(a:start_lnum, a:end_lnum)
+        if getline(lnum) !~ '^\s*$'
+            return lnum
+        endif
+    endfor
+    return -1 " No non-empty line found
+endfunction
+
+" Find the last non-empty line in a range
 function! s:FindLastNonEmpty(start_lnum, end_lnum) abort
     for lnum in range(a:end_lnum, a:start_lnum, -1)
         if getline(lnum) !~ '^\s*$'
@@ -64,52 +85,38 @@ function! s:FindLastNonEmpty(start_lnum, end_lnum) abort
     return -1 " No non-empty line found
 endfunction
 
-" --- End Helper Functions ---
+" --- Public API Functions (Autoloaded) ---
 
-" --- Movement Functions ---
-
-" Move to the line before the beginning of the current indented block
 function! indent_nav#MoveToBlockStart() abort
     let current_lnum = line('.')
-    let target_indent = s:GetEffectiveIndent(current_lnum)
-    echo target_indent
+    let target_indent = s:GetEffectiveIndent(current_lnum) " Uses fixed helper
 
     " Do nothing if not in an indented block
     if target_indent <= 0
-        " echo "Not in an indented block."
         return
     endif
 
-    " Set the jump mark before moving
-    normal! m'
-
     " Find the actual start line of the block
     let block_start_lnum = s:FindBlockStartLine(current_lnum, target_indent)
-    echo block_start_lnum
 
     " Calculate the target line (line before the block start)
     let final_target_lnum = block_start_lnum - 1
 
     if final_target_lnum >= 1
-        " Move to the beginning of the target line
         call cursor(final_target_lnum, 1)
         normal! ^ " Move to first non-blank
     else
-        " Block started on line 1, move to line 1 instead
         call cursor(1, 1)
         normal! ^
-        " echo "Block starts on line 1. Moved to line 1."
     endif
 endfunction
 
-" Move to the last non-empty line of the current indented block
 function! indent_nav#MoveToBlockEnd() abort
     let current_lnum = line('.')
-    let target_indent = s:GetEffectiveIndent(current_lnum)
+    let target_indent = s:GetEffectiveIndent(current_lnum) " Uses fixed helper
 
     " Do nothing if not in an indented block
     if target_indent <= 0
-        " echo "Not in an indented block."
         return
     endif
 
@@ -128,26 +135,23 @@ function! indent_nav#MoveToBlockEnd() abort
         call cursor(last_non_empty_match, 1)
         normal! ^ " Move to first non-blank
     elseif last_non_empty_match == -1
-        " Fallback: Should not happen if target_indent > 0, but just in case
-        " echo "Could not find end of block (no non-empty lines?)."
-    else
-        " Already on the last non-empty line or beyond. Do nothing.
-        " echo "Already at the last non-empty line of the block."
+        " Block contains only empty lines. Move to the end of the block.
+        if block_end_lnum != current_lnum
+             call cursor(block_end_lnum, 1)
+             normal! ^
+        endif
     endif
+    " If already on the last non-empty line, do nothing.
 endfunction
 
-" Main function called by mappings
 function! indent_nav#IndentBlockTextObject(type) abort
     let current_lnum = line('.')
-    let target_indent = s:GetEffectiveIndent(current_lnum)
+    let target_indent = s:GetEffectiveIndent(current_lnum) " Uses fixed helper
 
-    " Don't operate if not in an indented block
     if target_indent <= 0
-        " echo "Not in an indented block."
         return
     endif
 
-    " Find the full block boundaries
     let block_start_lnum = s:FindBlockStartLine(current_lnum, target_indent)
     let block_end_lnum = s:FindBlockEndLine(current_lnum, target_indent)
 
@@ -159,17 +163,15 @@ function! indent_nav#IndentBlockTextObject(type) abort
         let last_non_empty = s:FindLastNonEmpty(block_start_lnum, block_end_lnum)
 
         if first_non_empty != -1 && last_non_empty != -1
-            " Found non-empty lines, use them as boundaries
             let final_start_lnum = first_non_empty
             let final_end_lnum = last_non_empty
         else
-            " Block contains only empty lines, 'inside' selects them all
-            let final_start_lnum = block_start_lnum
-            let final_end_lnum = block_end_lnum
+             " Block contains only empty lines, 'inside' selects them all
+             let final_start_lnum = block_start_lnum
+             let final_end_lnum = block_end_lnum
         endif
 
     elseif a:type == 'a' " Around block
-        " Use the full block boundaries found earlier
         let final_start_lnum = block_start_lnum
         let final_end_lnum = block_end_lnum
     else
@@ -178,41 +180,28 @@ function! indent_nav#IndentBlockTextObject(type) abort
     endif
 
     " --- Select the range ---
-    " Get current mode (visual or operator-pending)
     let current_mode = mode()
 
     if current_mode ==# 'v' || current_mode ==# 'V' || current_mode ==# "\<C-v>"
-        " Visual mode: Adjust selection boundaries
-        " Keep track of original visual start to handle direction
         let original_visual_start_line = line("'<")
         let original_visual_end_line = line("'>")
-
-        " Set new visual marks
         execute final_start_lnum . "normal! m<"
         execute final_end_lnum . "normal! m>"
-
-        " Reselect based on original direction
         if original_visual_start_line <= original_visual_end_line
             normal! `<V`>
         else
             normal! `>V`<
         endif
-
     elseif current_mode ==# 'o'
-        " Operator-pending mode: Visually select the range for the operator
-        " Set the marks Vim uses for the operator range
         execute final_start_lnum . "normal! m<"
         execute final_end_lnum . "normal! m>"
-        " Enter linewise visual mode covering the desired lines
         normal! V
-        " Note: Vim automatically applies the pending operator to the visual selection
     else
-        " Should not happen if mappings are correct
         echoerr "IndentBlockTextObject called from unexpected mode: " . current_mode
     endif
-
 endfunction
 
+" vim: sw=4 et ts=4
 " --- End Movement Functions ---
 
 
