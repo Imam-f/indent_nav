@@ -149,64 +149,46 @@ function! indent_nav#MoveToBlockEnd() abort
 endfunction
 
 function! indent_nav#IndentBlockTextObject(type) abort
+    " Get current cursor position
     let current_lnum = line('.')
     let target_indent = s:GetEffectiveIndent(current_lnum)
 
-    " Do nothing if not in an indented block (target indent must be > 0)
+    " Do nothing if not in an indented block
     if target_indent <= 0
         return
     endif
 
-    " Find block boundaries (using modified helpers)
+    " Find the block boundaries
     let block_start_lnum = s:FindBlockStartLine(current_lnum, target_indent)
+    let block_start_lnum -= 1
     let block_end_lnum = s:FindBlockEndLine(current_lnum, target_indent)
 
     let final_start_lnum = block_start_lnum
     let final_end_lnum = block_end_lnum
 
     if a:type == 'i' " Inside block
+        let block_start_lnum += 1
         let first_non_empty = s:FindFirstNonEmpty(block_start_lnum, block_end_lnum)
         let last_non_empty = s:FindLastNonEmpty(block_start_lnum, block_end_lnum)
 
         if first_non_empty != -1 && last_non_empty != -1
             let final_start_lnum = first_non_empty
             let final_end_lnum = last_non_empty
-        else
-             " Block contains only empty lines, 'inside' selects them all
-             let final_start_lnum = block_start_lnum
-             let final_end_lnum = block_end_lnum
         endif
-
-    elseif a:type == 'a' " Around block
-        let final_start_lnum = block_start_lnum
-        let final_end_lnum = block_end_lnum
-    else
-        echoerr "Invalid type for IndentBlockTextObject: " . a:type
-        return
+        " If only empty lines, use the whole block (already set)
     endif
 
-    " --- Select the range ---
-    let current_mode = mode()
-
-    if current_mode ==# 'v' || current_mode ==# 'V' || current_mode ==# "\<C-v>"
-        let original_visual_start_line = line("'<")
-        let original_visual_end_line = line("'>")
-        execute final_start_lnum . "normal! m<"
-        execute final_end_lnum . "normal! m>"
-        if original_visual_start_line <= original_visual_end_line
-            normal! `<V`>
-        else
-            normal! `>V`<
-        endif
-    elseif current_mode ==# 'o'
-        execute final_start_lnum . "normal! m<"
-        execute final_end_lnum . "normal! m>"
-        normal! V
-    else
-        echoerr "IndentBlockTextObject called from unexpected mode: " . current_mode
-    endif
+    " Convert to character positions - start of first line to end of last line
+    let start_pos = [0, final_start_lnum, 1, 0]
+    let end_pos = [0, final_end_lnum, len(getline(final_end_lnum)) + 1, 0]
+    
+    " Set the `'<` and `'>` marks directly
+    call setpos("'<", start_pos)
+    call setpos("'>", end_pos)
+    
+    " Enter visual line mode
+    normal! `<V`>
 endfunction
-
 " vim: sw=4 et ts=4
 " --- End Movement Functions ---
 
