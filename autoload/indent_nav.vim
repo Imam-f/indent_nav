@@ -167,7 +167,7 @@ function! indent_nav#IndentBlockTextObject(type) abort
     let final_end_lnum = block_end_lnum
 
     if a:type == 'i' " Inside block
-        let final_start_lnum = block_start_lnum + 1
+        let block_start_lnum = block_start_lnum + 1
         let first_non_empty = s:FindFirstNonEmpty(block_start_lnum, block_end_lnum)
         let last_non_empty = s:FindLastNonEmpty(block_start_lnum, block_end_lnum)
 
