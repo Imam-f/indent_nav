@@ -177,7 +177,7 @@ function! indent_nav#IndentBlockTextObject(type) abort
     endif
 
     " Convert to character positions - start of first line to end of last line
-    let block_start_lnum -= 1
+    let final_start_lnum -= 1
     let start_pos = [0, final_start_lnum, 1, 0]
     let end_pos = [0, final_end_lnum, len(getline(final_end_lnum)) + 1, 0]
     
