@@ -160,14 +160,12 @@ function! indent_nav#IndentBlockTextObject(type) abort
 
     " Find the block boundaries
     let block_start_lnum = s:FindBlockStartLine(current_lnum, target_indent)
-    let block_start_lnum -= 1
     let block_end_lnum = s:FindBlockEndLine(current_lnum, target_indent)
 
     let final_start_lnum = block_start_lnum
     let final_end_lnum = block_end_lnum
 
     if a:type == 'i' " Inside block
-        let block_start_lnum += 1
         let first_non_empty = s:FindFirstNonEmpty(block_start_lnum, block_end_lnum)
         let last_non_empty = s:FindLastNonEmpty(block_start_lnum, block_end_lnum)
 
@@ -179,6 +177,7 @@ function! indent_nav#IndentBlockTextObject(type) abort
     endif
 
     " Convert to character positions - start of first line to end of last line
+    let block_start_lnum -= 1
     let start_pos = [0, final_start_lnum, 1, 0]
     let end_pos = [0, final_end_lnum, len(getline(final_end_lnum)) + 1, 0]
     
