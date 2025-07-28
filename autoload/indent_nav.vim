@@ -104,7 +104,7 @@ function! indent_nav#MoveToBlockStart() abort
     let block_start_lnum = s:FindBlockStartLine(current_lnum, target_indent)
 
     " Calculate the target line (line before the block start)
-    let final_target_lnum = block_start_lnum - 1
+    let final_target_lnum = block_start_lnum
 
     if final_target_lnum >= 1
         call cursor(final_target_lnum, 1)
